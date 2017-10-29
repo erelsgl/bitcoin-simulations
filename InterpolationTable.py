@@ -8,10 +8,15 @@ A class for keeping a table of y-values vs. x-values and interpolating y-values 
 """
 
 
+import os
 from typing import Callable
-import sys, os, numpy as np, scipy, matplotlib.pyplot as plt
+
+import matplotlib.pyplot as plt
+import numpy as np
+
 import ironing
 from log_progress import log_progress
+
 
 class InterpolationTable:
 	"""
@@ -28,6 +33,8 @@ class InterpolationTable:
 		self.yName = yName
 		self.fileName = fileName
 		self.valueCalculationFunction = valueCalculationFunction
+		self.regressionFunction = None
+		self.regressionString = ""
 
 	def calculateTable(self, xValues: list, numOfSamples:int = 1, recreateAllSamples:bool = False, numXValues:int = None, saveAfterEachSample:bool=False):
 		"""
@@ -64,6 +71,31 @@ class InterpolationTable:
 		self.xValues = xValues
 		self.smoothTable()
 
+	def calculateRegressionFunction(self, type:str):
+		"""
+		:param type: "linlin" or "linlin2" or "loglog"
+		"""
+		if self.xValues is None or self.yValuesSmoothed is None:
+			raise Exception("run calculateTable first")
+		xValues = self.xValues
+		# yValues = self.yValuesSmoothed
+		yValues = self.yValuesAverage
+		# yValues = [item for sublist in self.yValuesSamples for item in sublist]  # flatten values in all samples
+		if type=='linlin':
+			regressionCoeffs = np.polyfit(xValues, yValues, 1)
+			self.regressionString = "{} ~ {:.2e} {} + {:.2e}".format(self.yName, regressionCoeffs[0], self.xName, regressionCoeffs[1])
+			self.regressionFunction = lambda x:  regressionCoeffs[0]*x + regressionCoeffs[1]
+		elif type=='linlin2':
+			regressionCoeffs = np.polyfit(xValues, yValues, 2)
+			self.regressionString = "{} ~ {:.2e} {}^2 + {:.2e} {} + {:.2e}".format(self.yName, regressionCoeffs[0], self.xName, regressionCoeffs[1], self.xName, regressionCoeffs[2])
+			self.regressionFunction = lambda x:  regressionCoeffs[0]*x**2 + regressionCoeffs[1]*x + regressionCoeffs[2]
+		elif type=='loglog':
+			regressionCoeffs = np.polyfit(np.log(xValues), np.log(yValues), 1)
+			self.regressionString = "ln({}) ~ {:.2e} ln({}) + {:.2e}".format(self.yName, regressionCoeffs[0], self.xName, regressionCoeffs[1])
+			self.regressionFunction = lambda x:  np.exp(regressionCoeffs[0]*np.log(x) + regressionCoeffs[1])
+		else:
+			raise Exception("type should be linlin or loglog")
+
 	def smoothTable(self):
 		if self.yValuesSamples is not None and len(self.yValuesSamples)>0:
 			self.yValuesAverage = np.mean(self.yValuesSamples[:,:],axis=0)
@@ -72,23 +104,29 @@ class InterpolationTable:
 	def getYValue(self, xValue:float):
 		if self.xValues is None or self.yValuesSmoothed is None:
 			raise Exception("run calculateTable first")
-		return np.interp(xValue, self.xValues, self.yValuesSmoothed)
+		if self.regressionFunction is  None:
+			return np.interp(xValue, self.xValues, self.yValuesSmoothed)
+		else:
+			return self.regressionFunction(xValue)
 
 	def plotTable(self):
 		if self.xValues is None or self.yValuesSamples is None:
 			raise Exception("run calculateTable first")
-		f, ax = plt.subplots(3, 1, sharex=True, figsize=(8,12))
+		f, ax = plt.subplots(2, 1, sharex=True, figsize=(8,8))
 		for i in range(0,len(self.yValuesSamples)):
 			ax[0].plot(self.xValues, self.yValuesSamples[i], 'g--')
 		ax[0].plot(self.xValues, self.yValuesAverage, 'b', label="Average of {} samples".format(len(self.yValuesSamples)))
-		ax[0].set_ylabel("Optimal "+self.yName)
+		ax[0].set_ylabel("Exact "+self.yName)
 		ax[0].legend(loc=0)
-		ax[1].plot(self.xValues,self.yValuesSmoothed)
-		ax[1].set_ylabel("Monotone "+self.yName)
+		ax[0].set_xlabel(self.xName)
+		ax[1].plot(self.xValues,self.yValuesAverage,'b',label='Average')
+		ax[1].plot(self.xValues,self.yValuesSmoothed,'r.',label='Monotone')
+		ax[1].set_ylabel("Approximate "+self.yName)
 		xValuesForInterpolation = np.concatenate( (self.xValues/2, self.xValues/2+self.xValues[-1]/2) )
-		ax[2].plot(xValuesForInterpolation, [self.getYValue(x) for x in xValuesForInterpolation])
-		ax[2].set_ylabel("Interpolated "+self.yName)
-		ax[-1].set_xlabel(self.xName)
+		ax[1].plot(xValuesForInterpolation, [self.getYValue(x) for x in xValuesForInterpolation],'g',linewidth=3.0,label='Regression')
+		ax[1].legend(loc=0)
+		ax[1].set_xlabel(self.regressionString)
+		return ax
 
 	def plotTableLogLog(self):
 		if self.xValues is None or self.yValuesSamples is None:
