@@ -58,7 +58,45 @@ class Simulation:
 		directions = np.random.choice([1,-1], p=[probAliceToBob,probBobToAlice], size=numOfTransfers)
 		return sizes*directions
 
-	def simulateTransfers(self, transfers:list, channelCapacity:float, initialBalance:float, maxLowResetRange:float, minHighResetRange:float, blockchainFee:float)->int:
+
+	def simulateTransfersWithoutLightning(self, transfers:list, blockchainFee:float)->list:
+		"""
+		Simulate doing the given transfers when there are no lightning channels
+
+		INPUTS:
+		  transfers: list of transfer-sizes. Positive is from Alice to Bob; negative is from Bob to Alice.
+		  blockchainFee: the fee for a blockchain transaction.
+
+		OUTPUTS: (numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers, sumLightningTransfers, utilityFromTransfers):
+		  numBlockchainHits: number of blockchain-records consumed, either for transfers or for resets.
+		  numBlockchainTransfers: number of transfers done on the blockchain.
+		  numLightningTransfers:  number of transfers done on the lightning channel.
+		  sumBlockchainTransfers: total number of bitcoins transfered on the blockchain.
+		  sumLightningTransfers:  total number of bitcoins transfered on the blockchain.
+		  utilityFromTransfers:   net utility of the channel users, i.e:
+		    total number of bitcoins transfered overall times beta (the value/size parameter),
+		    minus
+		    number of blockchain hits times the blockchain fee.
+		    NOTE: the utility does not take into account the interest payments.
+		"""
+		relativeTransferValue = self.params[beta]
+		numBlockchainHits = numBlockchainTransfers = numLightningTransfers = sumBlockchainTransfers = sumLightningTransfers =  utilityFromTransfers = 0
+		for transferSize in transfers:  # transferSize is positive iff it is from Alice to Bob.
+			absTransferSize = abs(transferSize)
+			transferValue = absTransferSize*relativeTransferValue
+			if transferValue < blockchainFee:
+				# Don't make any transfer
+				continue
+			else:
+				# Do a blockchain transfer
+				numBlockchainHits += 1
+				numBlockchainTransfers += 1
+				sumBlockchainTransfers += absTransferSize
+				utilityFromTransfers += transferValue - blockchainFee
+		return (numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers, sumLightningTransfers, utilityFromTransfers)
+
+
+	def simulateTransfers(self, transfers:list, channelCapacity:float, initialBalance:float, maxLowResetRange:float, minHighResetRange:float, blockchainFee:float, lightningFeePerCoin:float=0)->int:
 		"""
 		Simulate doing the given transfers in a lightning channel.
 
@@ -71,6 +109,8 @@ class Simulation:
 				The channel will reset if the new balance is below maxLowResetRange or above minHighResetRange.
 		  resetSize: number of blockchain records used per reset transaction. Between 1 and  2.
 		  blockchainFee: the fee for a blockchain transaction.
+		  lightningFeePerCoin: the fee for transferring a coin in lightning (the lightning fee is this  umber times the transfer size).
+		       CURRENTLY NOT USED
 
 		OUTPUTS: (numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers, sumLightningTransfers, utilityFromTransfers):
 		  numBlockchainHits: number of blockchain-records consumed, either for transfers or for resets.
@@ -89,7 +129,7 @@ class Simulation:
 
 		balance = initialBalance
 		numBlockchainHits = numBlockchainTransfers = numLightningTransfers = sumBlockchainTransfers = sumLightningTransfers =  utilityFromTransfers = 0
-		for transferSize in transfers:  # transferSize is positive iff it is from Alice to Bob.
+		for transferSize in transfers:  # transferSize is positive if it is from Alice to Bob, negative if it is from  Bob to Alice.
 			absTransferSize = abs(transferSize)
 			transferValue = absTransferSize*relativeTransferValue
 			newBalance = balance - transferSize
@@ -118,6 +158,8 @@ class Simulation:
 				utilityFromTransfers += transferValue
 		return (numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers, sumLightningTransfers, utilityFromTransfers)
 
+
+
 	def plotBlockchainHitsVsResetRadiuses(self, numOfDays:int, channelCapacity:float, resetRadiuses:list, blockchainFee:float,figsize=(8,12)):
 		transfers = self.generateTransfers(numOfDays)
 		numBlockchainHits = []
@@ -130,18 +172,18 @@ class Simulation:
 			numBlockchainTransfers.append(simResults[1])
 			numLightningTransfers.append(simResults[2])
 			utilityFromTransfers.append(simResults[-1])
-		f, ax = plt.subplots(3, 1, sharex=True, figsize=figsize)
+		f, ax = plt.subplots(2, 1, sharex=True, figsize=figsize)
 		ax[0].plot(resetRadiuses,numBlockchainHits)
 		ax[0].set_ylabel("#Blockchain hits")
-		ax[0].set_title("Channel with capacity {} simulated for {} days".format(channelCapacity,numOfDays))
+		ax[0].set_title("Channel with capacity {} simulated for {} days, fee={}".format(channelCapacity,numOfDays,blockchainFee))
 		ax[1].plot(resetRadiuses,utilityFromTransfers)
 		ax[1].set_ylabel("Utility from transfers")
-		ax[2].plot(resetRadiuses, numBlockchainTransfers, "r--", label="blockchain")
-		ax[2].plot(resetRadiuses, numLightningTransfers, "b.-", label="lightning")
-		ax[2].plot(resetRadiuses, np.array(numBlockchainTransfers) + np.array(numLightningTransfers), "k-", label="total")
-		ax[2].legend()
-		ax[2].set_ylabel("#transfers")
-		ax[2].set_xlabel("Reset radius")
+		#ax[2].plot(resetRadiuses, numBlockchainTransfers, "r--", label="blockchain")
+		#ax[2].plot(resetRadiuses, numLightningTransfers, "b.-", label="lightning")
+		#ax[2].plot(resetRadiuses, np.array(numBlockchainTransfers) + np.array(numLightningTransfers), "k-", label="total")
+		#ax[2].set_ylabel("#transfers")
+		#ax[2].legend()
+		ax[1].set_xlabel("Reset radius")
 
 	def calculateOptimalResetRadius(self, transfers:list, channelCapacity:float, blockchainFee:float, optimizationBounds=None):
 		if optimizationBounds is None:
@@ -256,8 +298,8 @@ class Simulation:
 		self.optimalChannelCapacity.calculateTable(blockchainFees, numOfSamples, recreateAllSamples, numXValues=len(blockchainFees), saveAfterEachSample=True)
 		self.optimalChannelCapacity.calculateRegressionFunction(type="loglog")
 
-	def plotOptimalChannelCapacityTable(self):
-		self.optimalChannelCapacity.plotTable()
+	def plotOptimalChannelCapacityTable(self, xValues:list=None):
+		self.optimalChannelCapacity.plotTable(xValues)
 
 	def getOptimalChannelCapacity(self, blockchainFee:float):
 		return self.optimalChannelCapacity.getYValue(blockchainFee)
@@ -265,21 +307,42 @@ class Simulation:
 	def simulateTransfersWithOptimalChannelCapacity(self, transfers:list, blockchainFee:float)->int:
 		optimalChannelCapacity = self.getOptimalChannelCapacity(blockchainFee)
 		return self.simulateTransfersWithOptimalResetRadius(transfers, optimalChannelCapacity, blockchainFee)
-	
-	def demandForBlockchainRecords(self, transfers:list, blockchainFee:float)->int:
+
+	def simulateTransfersWithOrWithoutLightning(self, transfers:list, blockchainFee:float, withLightning:bool=True)->int:
+		if withLightning:
+			return self.simulateTransfersWithOptimalChannelCapacity(transfers, blockchainFee)
+		else:
+			return self.simulateTransfersWithoutLightning(transfers, blockchainFee)
+
+	def demandForBlockchainRecords(self, numOfDays:int, transfers:list, blockchainFee:float, withLightning:bool=True)->int:
 		"""
 		Calculate the number of blockchain records demanded when the given transfers are executed with the given blockchain fee.
 		"""
-		return self.simulateTransfersWithOptimalChannelCapacity(transfers, blockchainFee)[0]
-		
+		if withLightning:
+			optimalChannelCapacity = self.getOptimalChannelCapacity(blockchainFee)
+			(numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers,
+			 sumLightningTransfers, utilityFromTransfers) =	self.simulateTransfersWithOptimalResetRadius(transfers, optimalChannelCapacity, blockchainFee)
+			economicCost = self.economicCost(optimalChannelCapacity, numOfDays)
+			utility = utilityFromTransfers - economicCost
+			# print("utility={}".format(utility))
+			if utility>0:
+				return numBlockchainHits
+			else:
+				print("utility={} - lightning will not be used".format(utility))
+		# If the utility is negative,
+		#    then the lightning fee for EVERY transfer is smaller than its value
+		#    (since both the lightning fee and the value are  proportional to the transfer size).
+		#    Therefore, lightning will not be used at all.
+		result = self.simulateTransfersWithoutLightning(transfers, blockchainFee)
+		return result[0]
 
 	###### DEMAND SUPPLY and EQUILIBRIUM PRICE ######
 
-	def plotDailyDemandVsBlockchainFee(self, numOfDays:int, blockchainFees:list, figsize=(8,4)):
+	def plotDailyDemandVsBlockchainFee(self, numOfDays:int, blockchainFees:list, withLightning:bool=True, figsize=(8,4)):
 		transfers = self.generateTransfers(numOfDays)
 		dailyDemands = []
 		for blockchainFee in log_progress(blockchainFees, every=10, name="Fees"):
-			dailyDemands.append(self.demandForBlockchainRecords(transfers,blockchainFee) / numOfDays)
+			dailyDemands.append(self.demandForBlockchainRecords(numOfDays,transfers,blockchainFee,withLightning) / numOfDays)
 		f, ax = plt.subplots(1, 2, sharey=False, figsize=figsize)
 		ax[0].plot(blockchainFees,dailyDemands)
 		ax[0].set_title("Daily demand per pair averaged over {} days".format(numOfDays))
@@ -292,25 +355,25 @@ class Simulation:
 		ax[1].set_xlabel(loglogRegressionString)
 
 
-	def _findEquilibriumFee(self, numOfDays:int, transfers:list, numOfPairs:int, supply:int)->float:
+	def _findEquilibriumFee(self, numOfDays:int, transfers:list, numOfPairs:int, supply:int, withLightning:bool=True)->float:
 		surplusFunction = lambda blockchainFee: \
-			self.demandForBlockchainRecords(transfers,blockchainFee)*numOfPairs/numOfDays - \
+			self.demandForBlockchainRecords(numOfDays,transfers,blockchainFee,withLightning)*numOfPairs/numOfDays - \
 			supply
 		minFee = self.optimalChannelCapacity.xValues[0]
-		maxFee = self.optimalChannelCapacity.xValues[-1]
-		#print("Daily demand surplus at ", minFee, surplusFunction(minFee), " at ", maxFee, surplusFunction(maxFee))
 		if surplusFunction(minFee) < 0:
 			return minFee   # If the demand is less than the supply even for a price of 0, then the price will be 0
-		if surplusFunction(maxFee) > 0:
-			return maxFee  # TODO: find a way to calculate the fee!
+
+		maxFee = self.optimalChannelCapacity.xValues[-1]
+		while surplusFunction(maxFee) > 0:
+			maxFee = maxFee*2
 		fee = scipy.optimize.brentq(surplusFunction, minFee, maxFee)
 		return fee
 	
-	def findEquilibriumFee(self, numOfDays:int, numOfPairs:int, supply:int):
+	def findEquilibriumFee(self, numOfDays:int, numOfPairs:int, supply:int, withLightning:bool=True):
 		transfers = self.generateTransfers(numOfDays)
-		return self._findEquilibriumFee(numOfDays, transfers, numOfPairs, supply)
+		return self._findEquilibriumFee(numOfDays, transfers, numOfPairs, supply, withLightning)
 
-	def _plotNetworkPerformanceVsNumOfUsers(self, transfers:list, numOfDays:int, numsOfUsers:list, supply:int, ax:list):
+	def _plotNetworkPerformanceVsNumOfUsers(self, transfers:list, numOfDays:int, numsOfUsers:list, supply:int, ax:list, withLightning:bool=True):
 		"""
 		:param numOfDays:    how many days to run the simulation.
 		:param numsOfUsers:  a list of numbers of users; run the simulation for each num-of-users separately.
@@ -324,24 +387,30 @@ class Simulation:
 		for numOfUsers in log_progress(numsOfUsers, every=1, name="Num of users"):
 			numOfPairs = numOfUsers / 2
 
-			# This approximation results in over-supply of records, which is impossible.
+			# The approximation below results in over-supply of records, which is impossible.
 			# Equilibrium fee must be calcualted per-transfer, not on average!
 			# equilibriumFee = self.getEquilibriumBlockchainFee(numOfUsers)
 
-			equilibriumFee = self._findEquilibriumFee(numOfDays, transfers, numOfPairs, supply)
-			optimalChannelCapacity = self.getOptimalChannelCapacity(equilibriumFee)
-			(numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers, sumLightningTransfers, utilityFromTransfers) = \
-				self.simulateTransfersWithOptimalResetRadius(transfers, optimalChannelCapacity, equilibriumFee)
+			equilibriumFee = self._findEquilibriumFee(numOfDays, transfers, numOfPairs, supply, withLightning)
 			equilibirumFees.append(equilibriumFee)
-			pairsPerDay = numOfPairs/numOfDays
-			numBlockchainHitss.append(numBlockchainHits*pairsPerDay)
-			minersRevenues.append(numBlockchainHits*pairsPerDay*equilibriumFee)
-			numBlockchainTransferss.append(numBlockchainTransfers*pairsPerDay)
-			numLightningTransferss.append(numLightningTransfers*pairsPerDay)
-			sumBlockchainTransferss.append(sumBlockchainTransfers*pairsPerDay)
-			sumLightningTransferss.append(sumLightningTransfers*pairsPerDay)
-			netUtility = utilityFromTransfers - self.economicCost(optimalChannelCapacity,numOfDays) # utility per user
-			netUtilities.append(netUtility/numOfDays)   # utility per user per day
+			if withLightning:
+				optimalChannelCapacity = self.getOptimalChannelCapacity(equilibriumFee)
+				(numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers, sumLightningTransfers, utilityFromTransfers) = \
+					self.simulateTransfersWithOptimalResetRadius(transfers, optimalChannelCapacity, equilibriumFee)
+				netUtility = utilityFromTransfers - self.economicCost(optimalChannelCapacity, numOfDays)  # utility per user
+			else:
+				(numBlockchainHits, numBlockchainTransfers, numLightningTransfers, sumBlockchainTransfers,
+				 sumLightningTransfers, utilityFromTransfers) = \
+					self.simulateTransfersWithoutLightning(transfers, equilibriumFee)
+				netUtility = utilityFromTransfers
+			pairsPerDay = numOfPairs / numOfDays
+			numBlockchainHitss.append(numBlockchainHits * pairsPerDay)
+			minersRevenues.append(numBlockchainHits * pairsPerDay * equilibriumFee)
+			numBlockchainTransferss.append(numBlockchainTransfers * pairsPerDay)
+			numLightningTransferss.append(numLightningTransfers * pairsPerDay)
+			sumBlockchainTransferss.append(sumBlockchainTransfers * pairsPerDay)
+			sumLightningTransferss.append(sumLightningTransfers * pairsPerDay)
+			netUtilities.append(netUtility / numOfDays)  # utility per user per day
 
 		ax[0].plot(numsOfUsers, equilibirumFees)
 		ax[0].set_ylabel("Equilibrium fee")
@@ -364,18 +433,21 @@ class Simulation:
 		ax[5].set_ylabel("Net utility per user")
 		ax[-1].set_xlabel("Num of users")
 
-	def plotNetworkPerformanceVsNumOfUsers(self, numOfDays:int, numsOfUsers:list, supply:int=None,figsize=(6,15)):
+	def plotNetworkPerformanceVsNumOfUsers(self, numOfDays:int, numsOfUsers:list, supply:int=None,figsize=(6,15), withLightning:bool=True):
 		transfers = self.generateTransfers(numOfDays)
 		f, ax = plt.subplots(6, 1, sharex=True, figsize=figsize)
-		self._plotNetworkPerformanceVsNumOfUsers(transfers, numOfDays, numsOfUsers, supply, ax)
+		self._plotNetworkPerformanceVsNumOfUsers(transfers, numOfDays, numsOfUsers, supply, ax, withLightning)
 
-	def plotNetworkPerformanceVsNumOfUsers2(self, numOfDays:int, numsOfUsers:list, supplies:list, figsize=(6,15)):
+	def plotNetworkPerformanceVsNumOfUsers2(self, numOfDays:int, numsOfUsers:list, supplies:list, figsize=(6,15), withLightning:bool=True):
 		transfers = self.generateTransfers(numOfDays)
 		f, ax = plt.subplots(6, len(supplies), sharex=True, figsize=figsize)
 		for i in range(len(supplies)):
-			self._plotNetworkPerformanceVsNumOfUsers(transfers, numOfDays, numsOfUsers, supplies[i], ax[:,i])
+			self._plotNetworkPerformanceVsNumOfUsers(transfers, numOfDays, numsOfUsers, supplies[i], ax[:,i], withLightning)
 
-	def calculateEquilibriumBlockchainFeeTable(self, numOfDays: int, numsOfUsers: list, supply:int=None, numOfSamples: int = 1, recreateAllSamples: bool = False):
+
+	### Create an interpolation table for the equilibrium blockchain fee. NOT USED
+
+	def calculateEquilibriumBlockchainFeeTable(self, numOfDays: int, numsOfUsers: list, supply:int=None, withLightning:bool=True, numOfSamples: int = 1, recreateAllSamples: bool = False):
 		"""
 		Numerically calculate a table that gives, for each number of users in the system,
 		its equilibrium blockchain-fee.
@@ -393,10 +465,9 @@ class Simulation:
 
 		transferss = [self.generateTransfers(numOfDays) for iSample in range(numOfSamples)]
 		self.equilibriumBlockchainFeeTables[supply].valueCalculationFunction = \
-			lambda numOfUsers, iSample: self._findEquilibriumFee(numOfDays, transferss[iSample], numOfPairs = numOfUsers/2, supply=supply)
+			lambda numOfUsers, iSample: self._findEquilibriumFee(numOfDays, transferss[iSample], numOfPairs = numOfUsers/2, supply=supply, withLightning=withLightning)
 		self.equilibriumBlockchainFeeTables[supply].calculateTable(numsOfUsers, numOfSamples, recreateAllSamples, saveAfterEachSample=True)
 		self.equilibriumBlockchainFeeTables[supply].calculateRegressionFunction(type='linlin2')
-
 
 	def plotEquilibriumBlockchainFeeTable(self, supply):
 		ax=self.equilibriumBlockchainFeeTables[supply].plotTable()
@@ -410,7 +481,8 @@ class Simulation:
 		return self.simulateTransfersWithOptimalChannelCapacity(transfers, equilibriumFee)
 
 
-	###### SAVE AND LOAD ######
+
+	###### SAVE AND LOAD THE INTERPOLATION TABLES ######
 	
 	def saveTables(self):
 		if self.optimalResetRadius.isTableCalculated():
@@ -424,10 +496,8 @@ class Simulation:
 				table.saveTable()
 
 	def loadTables(self):
-		self.optimalResetRadius.loadTable()
-		self.optimalResetRadius.calculateRegressionFunction(type="linlin")
-		self.optimalChannelCapacity.loadTable()
-		self.optimalChannelCapacity.calculateRegressionFunction(type="loglog")
+		self.optimalResetRadius.loadTable(regressionType="linlin")
+		self.optimalChannelCapacity.loadTable(regressionType="loglog")
 		try:
 			supplyValues = np.load(self.filenamePrefix+"-supplyValues.npz")['supplyValues']
 			for supply in supplyValues:
@@ -436,8 +506,7 @@ class Simulation:
 					 fileName=self.filenamePrefix + "-equilibriumBlockchainFee-" + str(
 						 supply) + ".npz",
 					 valueCalculationFunction=None)
-				self.equilibriumBlockchainFeeTables[supply].loadTable()
-				self.equilibriumBlockchainFeeTables[supply].calculateRegressionFunction(type="loglog")
+				self.equilibriumBlockchainFeeTables[supply].loadTable(regressionType="linlin2")
 		except:
 			print("WARNING: cannot read "+self.filenamePrefix+"-supplyValues.npz")
 			print(sys.exc_info()[0])
@@ -522,6 +591,13 @@ class UniformAsymmetricSimulation(AsymmetricSimulation):
 
 	
 class PowerlawSymmetricSimulation(SymmetricSimulation):
+	power = 2
+
+	def setPower(self, power):
+		if power<=1:
+			raise Error("power should be more than 1")
+		self.power = power
+
 	def generateTransfers(self, numOfDays:int)->list:
 		"""
 		Draw random transfers assuming Alice and Bob have the same transfer-rate (L/2),
@@ -529,10 +605,16 @@ class PowerlawSymmetricSimulation(SymmetricSimulation):
 		"""
 		return Simulation.generateTransfers(self,
 			numOfDays, 
-			generateTransferSize=lambda numOfTransfers: random_powerlaw(minValue=0.5,size=numOfTransfers),
+			generateTransferSize=lambda numOfTransfers: random_powerlaw(minValue=0.5,size=numOfTransfers,power=self.power),
 			probAliceToBob = 0.5)
 	
 class PowerlawAsymmetricSimulation(AsymmetricSimulation):
+	power = 2
+	def setPower(self, power):
+		if power<=1:
+			raise Error("power should be more than 1")
+		self.power = power
+
 	def generateTransfers(self, numOfDays:int)->list:
 		"""
 		Draw random transfers assuming Alice and Bob have different transfer-rates ((L+D)/2, (L-D)/2),
@@ -540,7 +622,7 @@ class PowerlawAsymmetricSimulation(AsymmetricSimulation):
 		"""
 		return Simulation.generateTransfers(self,
 			numOfDays, 
-			generateTransferSize=lambda numOfTransfers: random_powerlaw(minValue=0.5,size=numOfTransfers),
+			generateTransferSize=lambda numOfTransfers: random_powerlaw(minValue=0.5,size=numOfTransfers,power=self.power),
 			probAliceToBob = (self.params[L]+self.params[D])/2/self.params[L])
 	
 
@@ -556,11 +638,13 @@ if __name__ == "__main__":
 		zmin: 0.001,  # min transfer size (for power law distribution)
 		zmax: 1,  # max transfer size (for uniform distribution)
 	}
-	sim = UniformSymmetricSimulation(params, numOfDays=100, filenamePrefix="interpolation-tables/uniform-symmetric-100days")
+	#sim = UniformSymmetricSimulation(params, numOfDays=100, filenamePrefix="interpolation-tables/uniform-symmetric-100days")
+	sim = PowerlawSymmetricSimulation(params, numOfDays=100, filenamePrefix="interpolation-tables/uniform-symmetric-100days")
+	sim.power = 10
 	supply = params[Supply]
 	sim.loadTables()
 
-	test = 7
+	test = 1
 	if test==1:
 		sim.plotBlockchainHitsVsResetRadiuses(
 			numOfDays=100,
@@ -591,5 +675,6 @@ if __name__ == "__main__":
 		sim.plotEquilibriumBlockchainFeeTable(supply*2); plt.show()
 	elif test==7:
 		sim.plotNetworkPerformanceVsNumOfUsers2(numOfDays=100, numsOfUsers=np.linspace(100000,10000000,50), supplies=[supply,supply*2], figsize=(20,30))
+		sim.plotNetworkPerformanceVsNumOfUsers2(numOfDays=100, numsOfUsers=np.linspace(100000,10000000,50), supplies=[supply,supply*2], figsize=(20,30), withLightning=False)
 	plt.show()
 	print("End demo")

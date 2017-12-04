@@ -109,20 +109,22 @@ class InterpolationTable:
 		else:
 			return self.regressionFunction(xValue)
 
-	def plotTable(self):
+	def plotTable(self, xValues:list=None):
 		if self.xValues is None or self.yValuesSamples is None:
 			raise Exception("run calculateTable first")
+		if xValues is None:
+			xValues = self.xValues
 		f, ax = plt.subplots(2, 1, sharex=True, figsize=(8,8))
 		for i in range(0,len(self.yValuesSamples)):
-			ax[0].plot(self.xValues, self.yValuesSamples[i], 'g--')
-		ax[0].plot(self.xValues, self.yValuesAverage, 'b', label="Average of {} samples".format(len(self.yValuesSamples)))
+			ax[0].plot(xValues, self.yValuesSamples[i], 'g--')
+		ax[0].plot(xValues, self.yValuesAverage, 'b', label="Average of {} samples".format(len(self.yValuesSamples)))
 		ax[0].set_ylabel("Exact "+self.yName)
 		ax[0].legend(loc=0)
 		ax[0].set_xlabel(self.xName)
-		ax[1].plot(self.xValues,self.yValuesAverage,'b',label='Average')
-		ax[1].plot(self.xValues,self.yValuesSmoothed,'r.',label='Monotone')
+		ax[1].plot(xValues,self.yValuesAverage,'b',label='Average')
+		ax[1].plot(xValues,self.yValuesSmoothed,'r.',label='Monotone')
 		ax[1].set_ylabel("Approximate "+self.yName)
-		xValuesForInterpolation = np.concatenate( (self.xValues/2, self.xValues/2+self.xValues[-1]/2) )
+		xValuesForInterpolation = np.concatenate( (xValues/2, xValues/2+xValues[-1]/2) )
 		ax[1].plot(xValuesForInterpolation, [self.getYValue(x) for x in xValuesForInterpolation],'g',linewidth=3.0,label='Regression')
 		ax[1].legend(loc=0)
 		ax[1].set_xlabel(self.regressionString)
@@ -171,7 +173,7 @@ class InterpolationTable:
 			yValuesSamples=self.yValuesSamples,
 			)
 
-	def loadTable(self):
+	def loadTable(self,regressionType=None):
 		if not os.path.isfile(self.fileName):
 			print("WARNING: file "+self.fileName+" does not exist")
 			return
@@ -180,6 +182,8 @@ class InterpolationTable:
 		self.xValues = arrays.get('xValues')
 		self.yValuesSamples = arrays.get('yValuesSamples')
 		self.smoothTable()
+		if regressionType:
+			self.calculateRegressionFunction(type=regressionType)
 
 	def setTable(self, xValues, yValuesSamples):
 		self.xValues = xValues
