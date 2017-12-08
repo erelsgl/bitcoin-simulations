@@ -373,7 +373,7 @@ class Simulation:
 		transfers = self.generateTransfers(numOfDays)
 		return self._findEquilibriumFee(numOfDays, transfers, numOfPairs, supply, withLightning)
 
-	def _plotNetworkPerformanceVsNumOfUsers(self, transfers:list, numOfDays:int, numsOfUsers:list, supply:int, ax:list, withLightning:bool=True):
+	def _plotNetStatsVsUserNum(self, transfers:list, numOfDays:int, numsOfUsers:list, supply:int, ax:list, withLightning:bool=True):
 		"""
 		:param numOfDays:    how many days to run the simulation.
 		:param numsOfUsers:  a list of numbers of users; run the simulation for each num-of-users separately.
@@ -433,16 +433,16 @@ class Simulation:
 		ax[5].set_ylabel("Net utility per user")
 		ax[-1].set_xlabel("Num of users")
 
-	def plotNetworkPerformanceVsNumOfUsers(self, numOfDays:int, numsOfUsers:list, supply:int=None,figsize=(6,15), withLightning:bool=True):
+	def plotNetStatsVsUserNumSingleSupply(self, numOfDays:int, numsOfUsers:list, supply:int=None,figsize=(6,15), withLightning:bool=True):
 		transfers = self.generateTransfers(numOfDays)
 		f, ax = plt.subplots(6, 1, sharex=True, figsize=figsize)
-		self._plotNetworkPerformanceVsNumOfUsers(transfers, numOfDays, numsOfUsers, supply, ax, withLightning)
+		self._plotNetStatsVsUserNum(transfers, numOfDays, numsOfUsers, supply, ax, withLightning)
 
-	def plotNetworkPerformanceVsNumOfUsers2(self, numOfDays:int, numsOfUsers:list, supplies:list, figsize=(6,15), withLightning:bool=True):
+	def plotNetStatsVsUserNum             (self, numOfDays:int, numsOfUsers:list, supplies:list, figsize=(6,15), withLightning:bool=True):
 		transfers = self.generateTransfers(numOfDays)
 		f, ax = plt.subplots(6, len(supplies), sharex=True, figsize=figsize)
 		for i in range(len(supplies)):
-			self._plotNetworkPerformanceVsNumOfUsers(transfers, numOfDays, numsOfUsers, supplies[i], ax[:,i], withLightning)
+			self._plotNetStatsVsUserNum(transfers, numOfDays, numsOfUsers, supplies[i], ax[:,i], withLightning)
 
 
 	### Create an interpolation table for the equilibrium blockchain fee. NOT USED
@@ -644,7 +644,7 @@ if __name__ == "__main__":
 	supply = params[Supply]
 	sim.loadTables()
 
-	test = 1
+	test = 5
 	if test==1:
 		sim.plotBlockchainHitsVsResetRadiuses(
 			numOfDays=100,
