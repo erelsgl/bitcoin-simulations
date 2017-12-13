@@ -28,13 +28,16 @@ class InterpolationTable:
 
 	def __init__(self, xName:str, yName:str, fileName:str, valueCalculationFunction:Callable):
 		self.xValues = None  # 1-dimensional array
-		self.yValuesSamples = None  # 2-dimensional array: samples x y-Values-per-sample
+		self.yValuesSamples = None  # 2-dimensional array. Every sample is a row; every x-value is a column.
 		self.xName = xName
 		self.yName = yName
 		self.fileName = fileName
 		self.valueCalculationFunction = valueCalculationFunction
 		self.regressionFunction = None
 		self.regressionString = ""
+
+	def numOfSamples(self):
+		return 0 if self.yValuesSamples is None else len(self.yValuesSamples)
 
 	def calculateTable(self, xValues: list, numOfSamples:int = 1, recreateAllSamples:bool = False, numXValues:int = None, saveAfterEachSample:bool=False):
 		"""
@@ -45,30 +48,25 @@ class InterpolationTable:
 		numOfSamples: how many samples to run (the results will be averaged).
 		recreateAllSamples: if True, all numOfSamples samples will be re-calculated. If False, only the missing will be re-calculated.
 		"""
-		if recreateAllSamples or self.yValuesSamples is None:
+		if recreateAllSamples:
+			self.yValuesSamples = np.zeros((0, len(xValues)))
 			numOfExistingSamples = 0
 		else:
-			numOfExistingSamples = len(self.yValuesSamples)
-		if numOfExistingSamples >= numOfSamples:
-			return
+			numOfExistingSamples = 0 if self.yValuesSamples is None else len(self.yValuesSamples)
+			if numOfExistingSamples >= numOfSamples:
+				return
 		if numXValues is None:
 			numXValues = len(xValues)
-		yValuesSamples = np.zeros((numOfSamples, len(xValues)))
-		if numOfExistingSamples > 0:
-			yValuesSamples[0:numOfExistingSamples, :] = self.yValuesSamples
-		if saveAfterEachSample:
-			self.xValues = xValues
-			self.yValuesSamples = yValuesSamples
+		self.xValues = xValues
 		for iSample in range(numOfExistingSamples, numOfSamples):
 			yValues = []
 			for xValue in log_progress(xValues, every=1, name=self.xName, size=numXValues):
 				yValue = self.valueCalculationFunction(xValue, iSample)
 				yValues.append(yValue)
-			yValuesSamples[iSample, :] = yValues
+			yValuesArray = np.asarray(yValues)
+			self.yValuesSamples = np.r_[self.yValuesSamples, [yValuesArray]] # add row; see https://stackoverflow.com/a/8505658/827927
 			if saveAfterEachSample:
 				self.saveTable()
-		self.yValuesSamples = yValuesSamples
-		self.xValues = xValues
 		self.smoothTable()
 
 	def calculateRegressionFunction(self, type:str):
@@ -109,13 +107,17 @@ class InterpolationTable:
 		else:
 			return self.regressionFunction(xValue)
 
-	def plotTable(self, xValues:list=None):
+	def plotTable(self, xValues:list=None, numOfSamplesToShow:int=None):
 		if self.xValues is None or self.yValuesSamples is None:
 			raise Exception("run calculateTable first")
 		if xValues is None:
 			xValues = self.xValues
+		if numOfSamplesToShow is None:
+			numOfSamplesToShow = len(self.yValuesSamples)
+		else:
+			numOfSamplesToShow = min(numOfSamplesToShow, len(self.yValuesSamples))
 		f, ax = plt.subplots(2, 1, sharex=True, figsize=(8,8))
-		for i in range(0,len(self.yValuesSamples)):
+		for i in range(0, numOfSamplesToShow):
 			ax[0].plot(xValues, self.yValuesSamples[i], 'g--')
 		ax[0].plot(xValues, self.yValuesAverage, 'b', label="Average of {} samples".format(len(self.yValuesSamples)))
 		ax[0].set_ylabel("Exact "+self.yName)
@@ -197,9 +199,10 @@ class InterpolationTable:
 
 if __name__ == "__main__":
 	table = InterpolationTable(xName="x", yName="y", fileName="interpolation-tables/InterpolationTableDemo.npz",
-		valueCalculationFunction=lambda x:np.sin(x)+np.random.random())
+		valueCalculationFunction=lambda x,iSample:np.sin(x)+np.random.random())
 	filename="InterpolationTableDemo.npz"
 	table.loadTable()
-	table.calculateTable(xValues=np.linspace(0,10,10000), numOfSamples=10, recreateAllSamples=False)
-	table.plotTable(); plt.show()
+	print("current num of samples: ", table.numOfSamples())
+	table.calculateTable(xValues=np.linspace(0,10,10000), numOfSamples=30, recreateAllSamples=False, saveAfterEachSample=True)
+	table.plotTable(numOfSamplesToShow=100); plt.show()
 	table.saveTable()
