@@ -1,9 +1,12 @@
 #!python3
 
 """
-Several classes for simulating a lightning channel.
+Contains several classes related to simulating a lightning channel:
+* Simulation - base class.
+* SymmetricSimulation, AsymmetricSimulation - sub-classes.
+* Additional sub-classes --- see below.
 
-@author Erel
+@author Erel Segal-Halevi
 @since  2017-10
 """
 
@@ -747,7 +750,7 @@ if __name__ == "__main__":
 	supply = params[Supply]
 	sim.loadTables()
 
-	test = 8
+	test = 7
 	if test==1:
 		sim.plotBlockchainHitsVsResetRadiuses(
 			numOfDays=100,
@@ -790,18 +793,13 @@ if __name__ == "__main__":
 			numOfDays=1000,
 			numsOfUsers=numsOfUsers,
 			supply=supply,
-			numOfSamples=50,
+			numOfSamples=500,
 			recreateAllSamples=False)
-		sim.plotEquilibriumBlockchainFeeTable(supply)
+		sim.saveTables()
+		sim.plotEquilibriumBlockchainFeeTable(supply, numOfSamplesToShow=100)
+		plt.gcf().get_axes()[0].set_title("Price-curves with lightning when supply={}".format(supply))
 		plt.savefig('../graphs/price-curve-lightning.pdf', format='pdf', dpi=1000)
 		plt.show()
-        #
-		# sim.calculateEquilibriumBlockchainFeeTable(numOfDays=100, numsOfUsers=np.linspace(100000,10000000,50), supply=supply, numOfSamples=4, recreateAllSamples=False)
-		# sim.saveTables()
-		# sim.plotEquilibriumBlockchainFeeTable(supply); plt.show()
-		# sim.calculateEquilibriumBlockchainFeeTable(numOfDays=100, numsOfUsers=np.linspace(100000,10000000,50), supply=supply*2, numOfSamples=4, recreateAllSamples=False)
-		# sim.saveTables()
-		# sim.plotEquilibriumBlockchainFeeTable(supply*2); plt.show()
 	elif test==8:
 		numsOfUsers = np.logspace(5, 8, 1000, base=10)  # from 10^5 to 10^8
 		sim.plotNetStatsVsUserNum(

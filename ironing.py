@@ -1,9 +1,9 @@
 #!python3
 
 """
-A function to make a numeric array increasing.
+A function that makes a numeric array monotonically-increasing.
 
-@author Erel
+@author Erel Segal-Halevi
 @since  2017-10
 """
 

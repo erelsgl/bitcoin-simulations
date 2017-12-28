@@ -1,7 +1,7 @@
 #!python3
 
 """
-A function to draw a random number according to the power-law distribution,
+A function to pick a random number according to the power-law distribution,
   with PDF: f(z) = minValue/z^2 for z>=zmin.
 
 Note that it is different than numpy.random.power and scipy.random.powerlaw.

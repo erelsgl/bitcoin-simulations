@@ -1,9 +1,10 @@
 #!python3
 
 """
-A class for keeping a table of y-values vs. x-values and interpolating y-values for other x-values.
+A class for keeping a table of y-values vs. x-values
+   and interpolating y-values for other x-values.
 
-@author Erel
+@author Erel Segal-Halevi
 @since  2017-10
 """
 
@@ -107,7 +108,7 @@ class InterpolationTable:
 		else:
 			return self.regressionFunction(xValue)
 
-	def plotTable(self, xValues:list=None, numOfSamplesToShow:int=None):
+	def plotTable(self, xValues:list=None, numOfSamplesToShow:int=None, plotAverage=True, plotMonotone=False):
 		if self.xValues is None or self.yValuesSamples is None:
 			raise Exception("run calculateTable first")
 		if xValues is None:
@@ -123,8 +124,10 @@ class InterpolationTable:
 		ax[0].set_ylabel("Exact "+self.yName)
 		ax[0].legend(loc=0)
 		ax[0].set_xlabel(self.xName)
-		ax[1].plot(xValues,self.yValuesAverage,'b',label='Average')
-		ax[1].plot(xValues,self.yValuesSmoothed,'r.',label='Monotone')
+		if plotAverage:
+			ax[1].plot(xValues,self.yValuesAverage,'b',label='Average')
+		if plotMonotone:
+			ax[1].plot(xValues,self.yValuesSmoothed,'r.',label='Monotone')
 		ax[1].set_ylabel("Approximate "+self.yName)
 		xValuesForInterpolation = np.concatenate( (xValues/2, xValues/2+xValues[-1]/2) )
 		ax[1].plot(xValuesForInterpolation, [self.getYValue(x) for x in xValuesForInterpolation],'g',linewidth=3.0,label='Regression')
